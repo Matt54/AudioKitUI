@@ -1,5 +1,4 @@
 // Copyright AudioKit. All Rights Reserved. Revision History at http://github.com/AudioKit/AudioKitUI/
-
 import AudioKit
 import SwiftUI
 
@@ -17,37 +16,47 @@ class FFTModel: ObservableObject {
         nodeTap.start()
     }
     
-    func updateAmplitudes(_ fftData: [Float]) {
+    func updateAmplitudes(_ fftFloats: [Float]) {
+        var fftData = fftFloats
+        for index in 0 ..< fftData.count {
+            if fftData[index].isNaN { fftData[index] = 0.0 }
+        }
+        
+        var tempAmplitudeArray: [Double] = []
+
         // loop by two through all the fft data
         for i in stride(from: 0, to: FFT_SIZE - 1, by: 2) {
-            // get the real and imaginary parts of the complex number
-            let real = fftData[i]
-            let imaginary = fftData[i + 1]
-            
-            let normalizedBinMagnitude = 2.0 * sqrt(real * real + imaginary * imaginary) / Float(FFT_SIZE)
-            let amplitude = Double(20.0 * log10(normalizedBinMagnitude))
-            
-            // scale the resulting data
-            var scaledAmplitude = (amplitude + 250) / 229.80
-            
-            // restrict the range to 0.0 - 1.0
-            if scaledAmplitude < 0 {
-                scaledAmplitude = 0
-            }
-            if scaledAmplitude > 1.0 {
-                scaledAmplitude = 1.0
-            }
-            
-            // add the amplitude to our array (further scaling array to look good in visualizer)
-            DispatchQueue.main.async {
-                if i / 2 < self.amplitudes.count {
-                    var mappedAmplitude = self.map(n: scaledAmplitude, start1: 0.3, stop1: 0.9, start2: 0.0, stop2: 1.0)
-                    if mappedAmplitude < 0.0 {
-                        mappedAmplitude = 0.0
-                    }
-                    self.amplitudes[i / 2] = mappedAmplitude
+            // only do calculations on the fftData we are visualizing
+            if i / 2 < amplitudes.count {
+                // get the real and imaginary parts of the complex number
+                let real = fftData[i]
+                let imaginary = fftData[i + 1]
+                
+                let normalizedBinMagnitude = 2.0 * sqrt(real * real + imaginary * imaginary) / Float(FFT_SIZE)
+                let amplitude = Double(20.0 * log10(normalizedBinMagnitude))
+                
+                // scale the resulting data
+                var scaledAmplitude = (amplitude + 250) / 229.80
+                
+                // restrict the range to 0.0 - 1.0
+                if scaledAmplitude < 0 {
+                    scaledAmplitude = 0
                 }
+                if scaledAmplitude > 1.0 {
+                    scaledAmplitude = 1.0
+                }
+                
+                var mappedAmplitude = map(n: scaledAmplitude, start1: 0.3, stop1: 0.9, start2: 0.0, stop2: 1.0)
+                if mappedAmplitude < 0.0 {
+                    mappedAmplitude = 0.0
+                }
+                
+                tempAmplitudeArray.append(mappedAmplitude)
             }
+        }
+        
+        DispatchQueue.main.async {
+            self.amplitudes = tempAmplitudeArray
         }
     }
     
@@ -57,7 +66,7 @@ class FFTModel: ObservableObject {
     }
 }
 
-struct FFTView: View {
+public struct FFTView: View {
     @ObservedObject var fft: FFTModel
     
     public init(_ node: Node) {
@@ -68,12 +77,13 @@ struct FFTView: View {
     var paddingFraction: CGFloat = 0.2
     var includeCaps: Bool = true
     
-    var body: some View {
+    public var body: some View {
         HStack(spacing: 0.0) {
             ForEach(0 ..< fft.amplitudes.count) { number in
                 AmplitudeBar(amplitude: fft.amplitudes[number], linearGradient: linearGradient, paddingFraction: paddingFraction, includeCaps: includeCaps)
             }
         }
+        .drawingGroup() // Metal powered rendering
         .background(Color.black)
     }
 }
